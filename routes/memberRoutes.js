@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import QRCode from 'qrcode';
 
 // Import Modular Utilities
 import { generateRegId } from '../utils/generateId.js';
@@ -58,6 +59,10 @@ const streamUpload = (buffer, folder, publicId = null) => {
     stream.end(buffer);
   });
 };
+
+// 1. Get your Frontend URL from Environment Variables
+// On Render, you will set FRONTEND_URL = "https://idccc-member.vercel.app"
+const frontendBaseUrl = process.env.FRONTEND_URL;
 
 // --- AUTH & PUBLIC ROUTES ---
 
@@ -255,7 +260,7 @@ router.post("/generate-docs/:id", async (req, res) => {
 
     // 2. Registration ID Logic
     if (!member.regNumber) {
-      member.regNumber = generateRegId();
+      member.regNumber = generateRegId(); // Assuming this helper is defined in your file
       await member.save();
       console.log("✅ Step 2: New RegNumber Assigned:", member.regNumber);
     } else {
@@ -272,61 +277,81 @@ router.post("/generate-docs/:id", async (req, res) => {
     };
     console.log("✅ Step 3: Assets Loaded (Base64 check):", !!assets.logoBase64);
 
-    // 4. Puppeteer Launch
-    console.log("⏳ Step 4: Launching Chromium Browser...");
+    // 4. QR Code Generation
+    // FRONTEND_URL should be set in Render env variables (e.g., https://your-site.vercel.app)
+    const frontendBaseUrl = process.env.FRONTEND_URL;
+    const verificationUrl = `${frontendBaseUrl}/verify/${member._id}`;
+
+    console.log("⏳ Step 4: Generating QR Code for:", verificationUrl);
+    const qrCodeBase64 = await QRCode.toDataURL(verificationUrl, {
+        errorCorrectionLevel: 'H',
+        margin: 1,
+        color: {
+            dark: '#1e3a8a', 
+            light: '#ffffff'
+        }
+    });
+    
+    // Inject QR code into assets so it's accessible by generateIdCardHtml
+    assets.qrCodeBase64 = qrCodeBase64;
+    console.log("✅ Step 4: QR Code injected into assets.");
+
+    // 5. Puppeteer Launch
+    console.log("⏳ Step 5: Launching Chromium Browser...");
     browser = await puppeteer.launch({ 
       headless: "new", 
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage' // Fix for potential memory issues on Render
+      ] 
     });
-    console.log("✅ Step 4: Browser Launched.");
+    console.log("✅ Step 5: Browser Launched.");
 
     const [pageCert, pageId] = await Promise.all([browser.newPage(), browser.newPage()]);
     
-    // Set Viewports
+    // Set Viewports (A4 for Cert, Custom for ID)
     await pageCert.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     await pageId.setViewport({ width: 400, height: 600, deviceScaleFactor: 2 });
-    console.log("✅ Step 5: Tabs Opened & Viewports Set.");
+    console.log("✅ Step 6: Tabs Opened & Viewports Set.");
 
-    // 5. Injecting HTML Content
-    console.log("⏳ Step 6: Injecting HTML Content into Pages...");
+    // 6. Injecting HTML Content
+    console.log("⏳ Step 7: Injecting HTML Content into Pages...");
     await Promise.all([
       pageCert.setContent(generateCertHtml(member, assets)),
       pageId.setContent(generateIdCardHtml(member, assets))
     ]);
-    console.log("✅ Step 6: HTML Content Injected.");
+    console.log("✅ Step 7: HTML Content Injected.");
 
-    // 6. Network Idle (Crucial Hang Point)
-    console.log("⏳ Step 7: Waiting for External Resources (Images/Fonts)...");
-    // Adding a 30s timeout to prevent infinite hang
+    // 7. Network Idle
+    console.log("⏳ Step 8: Waiting for External Resources...");
     await Promise.all([
-      pageCert.waitForNetworkIdle({ timeout: 30000 }).catch(e => console.warn("⚠️ Cert Page: Network idle timeout exceeded.")),
-      pageId.waitForNetworkIdle({ timeout: 30000 }).catch(e => console.warn("⚠️ ID Page: Network idle timeout exceeded."))
+      pageCert.waitForNetworkIdle({ timeout: 30000 }).catch(e => console.warn("⚠️ Cert Page: Network timeout.")),
+      pageId.waitForNetworkIdle({ timeout: 30000 }).catch(e => console.warn("⚠️ ID Page: Network timeout."))
     ]);
-    console.log("✅ Step 7: Network check finished.");
+    console.log("✅ Step 8: Network check finished.");
 
-    // 7. Screenshots
-    console.log("⏳ Step 8: Capturing Screenshots (PNG Buffers)...");
+    // 8. Screenshots
+    console.log("⏳ Step 9: Capturing Screenshots (PNG Buffers)...");
     const [certBuf, idBuf] = await Promise.all([
       pageCert.screenshot({ type: 'png', fullPage: true }),
       pageId.screenshot({ type: 'png', fullPage: true })
     ]);
-    console.log("✅ Step 8: Screenshots Captured.");
+    console.log("✅ Step 9: Screenshots Captured.");
 
-    // 8. Cloudinary Upload
-    console.log("⏳ Step 9: Uploading Buffers to Cloudinary...");
+    // 9. Cloudinary Upload
+    console.log("⏳ Step 10: Uploading Buffers to Cloudinary...");
     const [certUrl, idCardUrl] = await Promise.all([
       streamUpload(certBuf, "idccc_certificates", `cert_${member._id}`),
       streamUpload(idBuf, "idccc_idcards", `id_${member._id}`)
     ]);
-    console.log("✅ Step 9: Cloudinary Upload Complete.");
-    console.log("🔗 Cert URL:", certUrl);
-    console.log("🔗 ID URL:", idCardUrl);
+    console.log("✅ Step 10: Cloudinary Upload Complete.");
 
-    // 9. Database Update
+    // 10. Database Update
     member.certificateUrl = certUrl;
     member.idCardUrl = idCardUrl;
     await member.save();
-    console.log("✅ Step 10: Database Updated with Asset URLs.");
+    console.log("✅ Step 11: Database Updated with Asset URLs.");
 
     await browser.close();
     const duration = (Date.now() - startTime) / 1000;
@@ -341,7 +366,6 @@ router.post("/generate-docs/:id", async (req, res) => {
     res.status(500).json({ error: "Generation failed", details: err.message });
   }
 });
-
 
 // --- ADMIN ROUTES ---
 

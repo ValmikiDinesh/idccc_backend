@@ -299,14 +299,19 @@ router.post("/generate-docs/:id", async (req, res) => {
 
     // 5. Puppeteer Launch
     console.log("⏳ Step 5: Launching Chromium Browser...");
+
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || null;
+
     browser = await puppeteer.launch({ 
       headless: "new", 
+      executablePath: executablePath, // 👈 Directly points to the Render cache
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage' // Fix for potential memory issues on Render
-      ] 
-    });
+        '--disable-dev-shm-usage',
+        '--single-process' // Helps with memory on Render free tier
+         ] 
+     });
     console.log("✅ Step 5: Browser Launched.");
 
     const [pageCert, pageId] = await Promise.all([browser.newPage(), browser.newPage()]);

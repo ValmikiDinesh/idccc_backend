@@ -302,15 +302,15 @@ console.log("⏳ Step 5: Launching Chromium Browser...");
 
 browser = await puppeteer.launch({ 
   headless: "new", 
+  // DO NOT provide executablePath here; the .puppeteerrc file handles it
   args: [
     '--no-sandbox', 
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
-    '--single-process',
-    '--no-zygote'
+    '--single-process'
   ] 
 });
-console.log("✅ Step 5: Browser Launched.");
+console.log("✅ Step 5: Browser Launched successfully.");
 
     const [pageCert, pageId] = await Promise.all([browser.newPage(), browser.newPage()]);
     

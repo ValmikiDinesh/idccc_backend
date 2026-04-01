@@ -298,16 +298,39 @@ router.post("/generate-docs/:id", async (req, res) => {
     console.log("✅ Step 4: QR Code injected into assets.");
 
 
+  
     // 5. Puppeteer Launch
 console.log("⏳ Step 5: Launching Chromium Browser...");
 
-// We use the environment variable we just set in Render
-const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+// This helper finds the chrome executable inside your local project cache
+const getExecutablePath = () => {
+    const cachePath = path.join(process.cwd(), '.cache', 'puppeteer', 'chrome');
+    if (fs.existsSync(cachePath)) {
+        // Recursively find the 'chrome' binary file
+        const findChrome = (dir) => {
+            const files = fs.readdirSync(dir);
+            for (const file of files) {
+                const fullPath = path.join(dir, file);
+                if (fs.lstatSync(fullPath).isDirectory()) {
+                    const found = findChrome(fullPath);
+                    if (found) return found;
+                } else if (file === 'chrome' || file === 'chrome.exe') {
+                    return fullPath;
+                }
+            }
+        };
+        return findChrome(cachePath);
+    }
+    return null;
+};
+
+const exePath = getExecutablePath();
+console.log("📍 Detected Chrome Path:", exePath);
 
 try {
   browser = await puppeteer.launch({ 
     headless: "new", 
-    executablePath: chromePath, // 👈 FORCED PATH
+    executablePath: exePath, // Use the local path we just found
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
@@ -318,8 +341,6 @@ try {
   console.log("✅ Step 5: Browser Launched successfully.");
 } catch (error) {
   console.error("❌ Final Launch Attempt Failed:", error.message);
-  // Log the current directory to help debug if it fails again
-  console.log("Current Directory:", process.cwd());
   throw error;
 }
 

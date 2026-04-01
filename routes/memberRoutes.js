@@ -297,22 +297,28 @@ router.post("/generate-docs/:id", async (req, res) => {
     assets.qrCodeBase64 = qrCodeBase64;
     console.log("✅ Step 4: QR Code injected into assets.");
 
-    // 5. Puppeteer Launch
-    console.log("⏳ Step 5: Launching Chromium Browser...");
+   // 5. Puppeteer Launch
+console.log("⏳ Step 5: Launching Chromium Browser...");
 
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || null;
+try {
+  browser = await puppeteer.launch({ 
+    headless: "new", 
+    // This line tells Puppeteer: "Look in the cache folder we installed to during build"
+    executablePath: puppeteer.executablePath(), 
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--single-process',
+      '--no-zygote'
+    ] 
+  });
+  console.log("✅ Step 5: Browser Launched successfully.");
+} catch (launchError) {
+  console.error("❌ Puppeteer Launch Failed:", launchError.message);
+  throw launchError; // Pass it to your main catch block
+}
 
-    browser = await puppeteer.launch({ 
-      headless: "new", 
-      executablePath: executablePath, // 👈 Directly points to the Render cache
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--single-process' // Helps with memory on Render free tier
-         ] 
-     });
-    console.log("✅ Step 5: Browser Launched.");
 
     const [pageCert, pageId] = await Promise.all([browser.newPage(), browser.newPage()]);
     

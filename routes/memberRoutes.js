@@ -77,6 +77,7 @@ router.post("/register", upload.fields([
 ]), async (req, res) => {
 
   try {
+    configureCloudinary();
     const { fullName, email, mobile, aadhaarNumber } = req.body;
 
     if (!fullName || !email || !mobile || !aadhaarNumber) {

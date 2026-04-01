@@ -297,20 +297,31 @@ router.post("/generate-docs/:id", async (req, res) => {
     assets.qrCodeBase64 = qrCodeBase64;
     console.log("✅ Step 4: QR Code injected into assets.");
 
-// 5. Puppeteer Launch
+
+    // 5. Puppeteer Launch
 console.log("⏳ Step 5: Launching Chromium Browser...");
 
-browser = await puppeteer.launch({ 
-  headless: "new", 
-  // DO NOT provide executablePath here; the .puppeteerrc file handles it
-  args: [
-    '--no-sandbox', 
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--single-process'
-  ] 
-});
-console.log("✅ Step 5: Browser Launched successfully.");
+// We use the environment variable we just set in Render
+const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+
+try {
+  browser = await puppeteer.launch({ 
+    headless: "new", 
+    executablePath: chromePath, // 👈 FORCED PATH
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--single-process'
+    ] 
+  });
+  console.log("✅ Step 5: Browser Launched successfully.");
+} catch (error) {
+  console.error("❌ Final Launch Attempt Failed:", error.message);
+  // Log the current directory to help debug if it fails again
+  console.log("Current Directory:", process.cwd());
+  throw error;
+}
 
     const [pageCert, pageId] = await Promise.all([browser.newPage(), browser.newPage()]);
     
